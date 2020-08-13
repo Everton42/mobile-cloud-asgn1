@@ -17,16 +17,16 @@
  */
 package org.magnum.dataup;
 
+import org.eclipse.jetty.http.HttpStatus;
 import org.magnum.dataup.model.Video;
 import org.magnum.dataup.model.VideoStatus;
 import org.springframework.web.bind.annotation.*;
-import retrofit.client.Response;
+import org.springframework.web.multipart.MultipartFile;
 import retrofit.http.*;
-import retrofit.mime.TypedFile;
 
-import java.io.FileInputStream;
+import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -34,48 +34,72 @@ import java.util.concurrent.atomic.AtomicLong;
 
 @RestController
 public class VideoController {
-	private static final AtomicLong currentId = new AtomicLong(0L);
+    private static final AtomicLong currentId = new AtomicLong(0L);
 
-	private Map<Long,Video> videos = new HashMap<>();
+    private Map<Long, Video> videos = new HashMap<>();
 
-	public static final String DATA_PARAMETER = "data";
+    public static final String DATA_PARAMETER = "data";
 
-	public static final String ID_PARAMETER = "id";
+    public static final String ID_PARAMETER = "id";
 
-	public static final String VIDEO_SVC_PATH = "/video";
+    public static final String VIDEO_SVC_PATH = "/video";
 
-	public static final String VIDEO_DATA_PATH = VIDEO_SVC_PATH + "/{id}/data";
+    public static final String VIDEO_DATA_PATH = VIDEO_SVC_PATH + "/{id}/data";
 
-	private static final String URL_BASE = "http://localhost:8080";
-	private static final String VIDEO_URL = URL_BASE + VIDEO_SVC_PATH + "/%o/data";
+    private static final String URL_BASE = "http://localhost:8080";
+    private static final String VIDEO_URL = URL_BASE + VIDEO_SVC_PATH + "/%o/data";
 
-	@GetMapping(VIDEO_SVC_PATH)
-	public Collection<Video> getVideoList() {
-		return null;
-	}
+    @GetMapping(VIDEO_SVC_PATH)
+    public @ResponseBody
+    Collection<Video> getVideoList() {
+        return videos.values();
+    }
 
-	@PostMapping(VIDEO_SVC_PATH)
-	public Video addVideo(@RequestBody Video video) {
-		try {
-			video.setId(currentId.incrementAndGet());
-			video.setDataUrl(String.format(VIDEO_URL, video.getId()));
-			videos.put(video.getId(), video);
-  			return video;
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		return null;
-	}
+    @PostMapping(VIDEO_SVC_PATH)
+    public @ResponseBody
+    Video addVideo(@RequestBody Video video) {
+        try {
+            video.setId(currentId.incrementAndGet());
+            video.setDataUrl(String.format(VIDEO_URL, video.getId()));
+            videos.put(video.getId(), video);
+        } catch (Exception e) {
+            e.getMessage();
+        }
+        return video;
+    }
 
-	@Multipart
-	@PostMapping(VIDEO_DATA_PATH)
-	public VideoStatus setVideoData(@Path(ID_PARAMETER) long id, @Part(DATA_PARAMETER) TypedFile videoData) {
-		return null;
-	}
+    @Multipart
+    @PostMapping(VIDEO_DATA_PATH)
+    public @ResponseBody
+    VideoStatus setVideoData(@PathVariable(ID_PARAMETER) long id, @RequestParam(DATA_PARAMETER) MultipartFile videoData, HttpServletResponse response) throws IOException {
+        Video video = videos.get(id);
+        VideoStatus status = new VideoStatus(VideoStatus.VideoState.READY);
 
-	@Streaming
-	@GetMapping(VIDEO_DATA_PATH)
-	public Response getData(long id) {
-		return null;
-	}
+        if (video == null) {
+            response.setStatus(HttpStatus.NOT_FOUND_404);
+            return status;
+        }
+
+        VideoFileManager vfm = VideoFileManager.get();
+        vfm.saveVideoData(video, videoData.getInputStream());
+        return status;
+    }
+
+    @Streaming
+    @GetMapping(VIDEO_DATA_PATH)
+    public HttpServletResponse getData(@PathVariable(ID_PARAMETER) long id, HttpServletResponse response) throws IOException {
+        Video video = videos.get(id);
+
+        response.setHeader("Content-Type", "video/mp4");
+		OutputStream out = response.getOutputStream();
+
+        if (video != null){
+			VideoFileManager.get().copyVideoData(video, out);
+			response.setStatus(HttpStatus.OK_200);
+		}else
+            response.setStatus(HttpStatus.NOT_FOUND_404);
+
+		out.flush();
+        return response;
+    }
 }
