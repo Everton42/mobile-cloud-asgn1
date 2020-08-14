@@ -26,7 +26,6 @@ import retrofit.http.*;
 
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -85,21 +84,14 @@ public class VideoController {
         return status;
     }
 
-    @Streaming
-    @GetMapping(VIDEO_DATA_PATH)
-    public HttpServletResponse getData(@PathVariable(ID_PARAMETER) long id, HttpServletResponse response) throws IOException {
-        Video video = videos.get(id);
-
-        response.setHeader("Content-Type", "video/mp4");
-		OutputStream out = response.getOutputStream();
-
-        if (video != null){
-			VideoFileManager.get().copyVideoData(video, out);
-			response.setStatus(HttpStatus.OK_200);
-		}else
-            response.setStatus(HttpStatus.NOT_FOUND_404);
-
-		out.flush();
-        return response;
+    @RequestMapping(VIDEO_DATA_PATH)
+    public void getData(@PathVariable(ID_PARAMETER) long id, HttpServletResponse response) {
+        try {
+            VideoFileManager videoData = VideoFileManager.get();
+            if(videos.get(id)==null) response.setStatus(HttpStatus.NOT_FOUND_404);
+            else
+                videoData.copyVideoData(videos.get(id), response.getOutputStream());
+        } catch (Exception e) {
+        }
     }
 }
